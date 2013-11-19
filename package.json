@@ -1,0 +1,9 @@
+﻿{
+	"id" : "jariz-update",
+	"name" : "JariZ's Update mod",
+	"version":"0.0.1-DEV",
+	"author":"halp@jari.io",
+	"url":"https://github.com/jariz/update",
+	"description" : "Adds Update functionality to Game Tycoon.",
+	"main" : "./bootstrap.js"
+}
