@@ -118,7 +118,8 @@ var Update = {};
                 if (!button.hasClass("orangeButton")) {
                     button.removeClass("disabledButton").addClass("orangeButton");
                     button.clickExcl(function () {
-                        UI.createEngineClick()
+                        UI.closeModal();
+                        Update.startUpdate(game, selectedEngineParts, modalContent.find(".updateVersionInput").val());
                     })
                 }
             } else {
@@ -181,22 +182,68 @@ var Update = {};
         }
     };
 
+    Update.game = null;
+
     /**
-     * Start the actual working proccess, after choosing the new features
+     * Start the actual working process, after choosing the new features
      * @param game
      * @param new_features
      */
-    Update.startUpdate = function (game, new_features) {
-        //update ui
-        VisualsManager.gameStatusBar.startDevelopment()
-        VisualsManager.gameStatusBar.updateGameName("Update for " + game.name);
-        VisualsManager.gameStatusBar.updateStatusMessage("Preparing...");
+    Update.startUpdate = function (game, new_features, version) {
+        VisualsManager.gameStatusBar.updateStatusMessage("");
+        VisualsManager.gameStatusBar.startDevelopment();
+        VisualsManager.putConsoleToPedestal();
+//        GameManager.executeFeatures([], Missions.PreparationMission);
 
-        //set all chars to working state
-        for (var f = GameManager.company.staff.filter(function (a) {
-            return a.state === CharacterState.Idle
-        }), c = 0; c < f.length; c++)f[c].startWorking()
+        //add/generate game
+        Update.game = game;
+        Update.game.id = Update.game.id+"-UPDATE-"+new Date().getTime();
+        Update.game.title = version + " of " + Update.game.title;
+        GameManager.company.currentGame = Update.game;
+        //add features
+        GameManager.plannedFeatures.push({
+            type : "focus",
+            id : "preparation",
+            missionType : "preparation"
+        });
+        //work on said features
+        GameManager.transitionToState(State.ExecuteWorkItems);
+        //add the rest
+
+        Update.handleMissions(Missions.Stage1Missions);
+        Update.handleMissions(Missions.Stage2Missions);
+        Update.handleMissions(Missions.Stage3Missions);
+
+        //probably the best way to do this without having to hook into the games renderloop or something
+        //if you know something better, YOU TELL ME, don't judge me ok :(
+//        setTimeout(function() {
+//            GameManager.executeFeatures(new_features)
+//        }, 3000);
+
+//        //update ui
+//        VisualsManager.gameStatusBar.startDevelopment()
+//        VisualsManager.gameStatusBar.updateGameName(game.name);
+//        VisualsManager.gameStatusBar.updateStatusMessage("Preparing...");
+//
+//        //set all chars to working state
+//        for (var f = GameManager.company.staff.filter(function (a) {
+//            return a.state === CharacterState.Idle
+//        }), c = 0; c < f.length; c++)f[c].startWorking()
     };
+
+    /**
+     * Convenience method for adding missions in bulk
+     */
+    Update.handleMissions = function(missions) {
+        for (var i = 0; i < missions.length; i++) {
+            missions[i].percentage = 0;
+            GameManager.plannedFeatures.push({
+                type : "focus",
+                id : missions[i].id,
+                missionType : "mission"
+            })
+        }
+    }
 
     /**
      * Shows the 'select game' dialog and processes it's input.
