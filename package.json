@@ -1,8 +1,8 @@
 ﻿{
-	"id" : "jariz-update",
+	"id" : "update",
 	"name" : "JariZ's Update mod",
 	"version":"0.0.1",
-	"author":"halp@jari.io",
+	"author":"JARI.IO",
 	"url":"https://github.com/jariz/jariz-update",
 	"description" : "Adds Update functionality to Game Tycoon.",
 	"main" : "./modAPI.js"

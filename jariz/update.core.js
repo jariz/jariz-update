@@ -1,8 +1,9 @@
 /**
  * Copyright Jari Zwarts 2013
- * Licensed under the Creative Common Attribution-ShareAlike 3.0 Unported (CC BY-SA 3.0) license
+ * http://jari.io/
+ * Licensed under the MIT license
  * Please read the LICENSE file for the entire license.
- * Made with <3 for GDT
+ * Made with <3 for GDT and as an example for a 'good' mod
  */
 
 
@@ -38,6 +39,7 @@ var Update = {};
         GDT.on(GDT.eventKeys.saves.loading, function (data) {
             Update.isResearched = Update.Helpers._Researched("Game Updates", data.data.company.researchCompleted);
             console.log("Loading event callback, isResearched=" + Update.isResearched);
+            setTimeout(Update.checkForUpdate, 1000);
         });
 
         Research.BasicItems.push(
@@ -45,7 +47,7 @@ var Update = {};
                 id: "Game Updates",
                 name: "Game Updates".localize(),
                 pointsCost: 20,
-                duration: 1500,
+                duration: 10000, //10 sec
                 category: "General",
                 categoryDisplayName: "General"
             }
@@ -60,14 +62,17 @@ var Update = {};
         });
 
         var promised_game = null;
-        GDT.addEvent(
+        //we're not using GDT.addEvent because we don't want to be reliable on the mod 'API' (hardly an api, there's no need for an api anyway, you can access every freakin variable in the game)
+        //kinda bad design tbh, GDT.addEvent etc should be included into the game itself (like GDT.on/off/fire)
+        //mods shouldn't rely on each other, only causes chaos.
+        //but who am i? /rant
+        DecisionNotifications.modNotifications.push(
             {
                 id: "UpdateWarning",
-                isRandom: true,
                 maxTriggers: false,
                 trigger: function (company) {
                     var games = Sales.getGamesToSell(company);
-                    var ret;
+                    var ret = false;
                     games.forEach(function (game) {
                         if (ret) return;
                         //we're in 2nd sales week & our game sucks balls
@@ -80,7 +85,7 @@ var Update = {};
                     var game = null;
                     games.forEach(function (game_) {
                         //we're in 2nd sales week & our game sucks balls
-                        if (game.salesCashLog.length == 2 && !Update.Helpers.isGameFullyUtilisingEngine(game_))
+                        if (game_.salesCashLog.length == 2 && !Update.Helpers.isGameFullyUtilisingEngine(game_))
                             game = game_;
                     });
                     promised_game = game;
@@ -88,17 +93,17 @@ var Update = {};
                     if (!game) throw "Ermmm, couldn't get the game I was looking for (updatemod), please contact halp@jari.io";
 
                     var messages = [ //0 = newssource, 1 = game, 2 = company
-                        "{0} reports: 'Fans were unpleasantly surprised when picking up {1} last week, the game, appears to be missing a lot of it's features that the engine does support.\n"
-                            + "We at {0} really hope the manufacturer of {1} - {2} - will set this straight by releasing an update that will reintroduce these features we all love and have accustomed to.'",
+                        "{0} reports: 'Fans were unpleasantly surprised when picking up {1} last week, the game, appears to be missing a lot of it's features that the engine does support.'\n"
+                            + "'We at {0} really hope the manufacturer of {1} - {2} - will set this straight by releasing an update that will reintroduce these features we all love and have accustomed to.'",
 
-                        "'{0} with breaking news here: Last week's {1} is missing a severe amount of features and fans are outraged! when asking about an explanation {2} replied with:",
+                        "{0} with breaking news here: Last week's {1} is missing a severe amount of features and fans are outraged! when asking about an explanation {2} replied with:",
 
                         "{0} on the phone: 'Any explanation why your latest release ({1}) had so little features, while the engine has so many?'"
                     ];
 
                     //only add the forum message when the internet is invented
                     if (company.getCurrentDate().year >= 15) messages.push("Boss, I was browsing the {0} forums today and it appears a lot of hardcore fans are pretty disappointed about the features of {1} despite our engine being able to handle so much more features.\nWhat do we do? we could lose a lot of fans if we don't fix this!");
-
+                    game.flags.updateWarned = true;
                     return new Notification({
                         sourceId: "UpdateWarning",
                         header: "Fan outrage!".localize(),
@@ -108,14 +113,14 @@ var Update = {};
                 },
                 complete: function (decision) {
                     var company = GameManager.company;
-                    game.flags.updateWarned = true;
+                    var game = promised_game;
 
                     switch (decision) {
                         case 0:
                             if (!Update.isResearched) {
                                 company.notifications.push(new Notification({
                                     header: "Woops!",
-                                    text: "You promised an update but we're unable to, We haven't researched it yet!\nI'd suggest you too research it quickly before the press get a hold of this!"
+                                    text: "You promised an update but we're unable to do so, We haven't researched it yet!\nI'd suggest you too research it quickly before the press gets a hold of this!"
                                 }))
                             } else company.notifications.push(new Notification({
                                 header: Update.newsSources.pickRandom(),
@@ -126,65 +131,95 @@ var Update = {};
                             Update.promisedUpdates.push({game: promised_game.id, notResearchedYet: !Update.isResearched, warnedTime: company.getCurrentDate()});
                             break;
                         case 1:
-                            company.notifications.push(new Notification({
-                                header: "Woops!",
+                            var n = new Notification({
+                                header: Update.newsSources.pickRandom(),
                                 text: "BREAKING: Word just got in {0} that has promised us a new update that will include much more features! Fans are eagerly awaiting this new version.".format(company.name)
-                            }));
+                            });
+                            n.adjustFans(-200);
+                            company.notifications.push(n);
                             break;
                     }
                 }
             }
         );
 
+        /**
+         * Although somewhat ironic, this function actually checks for updates of this mod. (spare me the inception jokes, please)
+         * Displays a popup whenever there's a new version.
+         * todo fix this (currently JSON.parse is throwing errs)
+         */
+        Update.checkForUpdate = function () {
+//            $.getJSON("https://raw.github.com/jariz/jariz-update/master/package.json", function (Package) {
+//                require('fs').readFile('mods/jariz-update/package.json', { encoding: 'UTF-8' }, function (e, d) {
+//                    if(e != null) {
+//                        console.error(e);
+//                        return;
+//                    }
+//                    console.log(arguments);
+//                    var LocalPackage = JSON.parse(d);
+//                    if(Package.version != LocalPackage.version) GameManager.company.notifications.push(new Notification({
+//                        header: Update.newsSources.pickRandom(),
+//                        text: "There's a new version available ({0}) for the Update Mod for GDT!\nIt is advised that you update. You can the new version from https://github.com/jariz/jariz-update/archive/master.zip"
+//                    }));
+//                    console.log(LocalPackage, Package);
+//                })
+//            });
+        }
+
         var failure_game;
-        GDT.addEvent(
+        DecisionNotifications.modNotifications.push(
             {
                 id: "UpdateFailureToComply",
-                isRandomEvent: true,
+//                isRandomEvent: true,
+                maxTriggers: false,
                 trigger: function (company) {
                     var games = Sales.getGamesToSell(company);
-                    var ret;
+                    var ret = false;
                     games.forEach(function (game) {
                         if (ret) return;
-                        //we're in 4nd sales week and we've been warned
-                        ret = game.flags.updateWarned && !game.flags.updateFailureToComply && game.salesCashLog.length == 4;
+                        //we're in 10th sales week and we've been warned
+                        ret = game.flags.updateWarned && !game.flags.updateFailureToComply && game.salesCashLog.length == 10;
                         failure_game = game;
                     });
                     return ret;
                 },
                 getNotification: function (company) {
                     var game = failure_game;
+                    game.flags.updateFailureToComply = true;
 
-                    //did the user made a change to the game?
                     var notif;
-                    if (Update.Helpers.isGameFullyUtilisingEngine(game)) {
-                        //TODO we're not checking if we've even promised something
-                        notif = new Notification({
-                                header:Update.newsSources.pickRandom(),
-                                text: "It appears that {0} is a company that sticks to it's word, as it has just released a huge update which fixes a lot of problems people were having with {1}.\nThe fans are pleased and the media is speaking about it positively.\nThey handled this very well!".format(company.name, game.title)
-                            });
-                        notif.adjustFans(200);
-                    } else {
-                        //didn't change anything, get promise object
-                        //TODO pop promise
-                        //TODO check fullyutilisingengine if we're gonna put above part into below part
-                        Update.promisedUpdates.filter(function(promise) {
-                            if(promise.notResearchedYet == !Update.Helpers.Researched("Game Updates") && promise.game == game.id) {
-                                notif = new Notification({
-                                    header:Update.newsSources.pickRandom(),
-                                    text: "BREAKING NEWS: Despite their fans begging for a update - still hasn't released one.\nA few weeks ago {0} replied with that 'they would handle it ASAP', but at last, still no sign of any update\nA close source has informed us that {0} didn't do so simply because they \"Didn't knew how\" as they have never released an update neither knew how to.\nThis massive scandal is something the media and the fans won't forget for some time...".format(company.name, game.title)
-                                });
-                                notif.adjustFans(-500);
-                            } else if(promise.game == game.id) {
-                                notif = new Notification({
-                                    header:Update.newsSources.pickRandom(),
-                                    text: "BREAKING NEWS: Despite their fans begging for a update - still hasn't released one.\nA few weeks ago {0} replied with that 'they would handle it ASAP', but at last, still no sign of any update\nLittle Johnny (a 12 year old fan) replied with: 'It's kind of what we're starting to expect of {0}...' as he threw his {0} t-shirt away.".format(company.name, game.title)
-                                });
-                                notif.adjustFans(-300);
-                            }
-                        })
-                    }
 
+                    //didn't change anything, get promise object
+                    //TODO pop promise
+                    Update.promisedUpdates.filter(function (promise) {
+                        if (notif) return;
+                        if (promise.game == game.id) {
+                            if (Update.Helpers.isGameFullyUtilisingEngine(game)) {
+                                notif = new Notification({
+                                    header: Update.newsSources.pickRandom(),
+                                    text: "It appears that {0} is a company that sticks to it's word, as it has just released a huge update which fixes a lot of problems people were having with {1}.\nThe fans are pleased and the media is speaking about it positively.\nThey handled this very well!".format(company.name, game.title)
+                                });
+                                notif.adjustFans(200);
+                            }
+                            else {
+                                if (promise.notResearchedYet == !Update.Helpers.Researched("Game Updates")) {
+                                    notif = new Notification({
+                                        header: Update.newsSources.pickRandom(),
+                                        text: "BREAKING NEWS: Despite their fans begging for a update - {0} still hasn't released one.\nA few weeks ago {0} replied with that 'they would handle it ASAP', but at last, still no sign of any update\nA close source has informed us that {0} didn't do so simply because they \"Didn't knew how\" as they have never released an update neither knew how to.\nThis massive scandal is something the media and the fans won't forget for some time...".format(company.name, game.title)
+                                    });
+                                    notif.adjustFans(-500);
+                                } else {
+                                    notif = new Notification({
+                                        header: Update.newsSources.pickRandom(),
+                                        text: "BREAKING NEWS: Despite their fans begging for a update - {0} still hasn't released one.\nA few weeks ago {0} replied with that 'they would handle it ASAP', but at last, still no sign of any update\nLittle Johnny (a 12 year old fan) replied with: 'It's kind of what we're starting to expect of {0}...' as he threw his {0} t-shirt away.".format(company.name, game.title)
+                                    });
+                                    notif.adjustFans(-300);
+                                }
+                            }
+                        }
+                    })
+
+                    if(notif) throw "You shouldn't get this error.";
                     return notif;
                 },
                 complete: function (decision) {
@@ -229,10 +264,14 @@ var Update = {};
          * @param game
          */
         isGameFullyUtilisingEngine: function (game) {
+            if(!game.engine || !game.features) return true;
+            if(!!game.engine.parts) return true;
+
             var parts = game.engine.parts.length;
             var features = game.features.length;
 
-
+            //parts should at least have 75% of the engine
+            return features >= (parts / 4) * 3;
         }
     };
 
